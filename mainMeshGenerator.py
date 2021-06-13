@@ -98,19 +98,11 @@ print(center2)
 building1 = points[indexes1]
 building2 = points[indexes2]
 
-
 building1_from_center_to_points = np.subtract(building1,center1)
 building1_from_center_to_points = building1_from_center_to_points/np.linalg.norm(building1_from_center_to_points,axis=1)[:,None]
-# building1_from_center_to_points = building1_from_center_to_points
 
 building2_from_center_to_points = np.subtract(building2,center2)
 building2_from_center_to_points = building2_from_center_to_points/np.linalg.norm(building2_from_center_to_points,axis=1)[:,None]
-# building2_from_center_to_points = building2_from_center_to_points
-
-print("building1_from_center_to_points: ")
-print(building1_from_center_to_points.shape)
-print("building2_from_center_to_points: ")
-print(building2_from_center_to_points.shape)
 
 print(normals1.shape)
 print(normals2.shape)
@@ -119,12 +111,6 @@ print(building2_from_center_to_points.shape)
 
 dot1 = np.array([np.dot(normals1[i], building1_from_center_to_points[i]) for i in range(len(normals1))])
 dot2 = np.array([np.dot(normals2[i], building2_from_center_to_points[i]) for i in range(len(normals2))])
-
-# dot1 = np.einsum('ij,ij->i', np.dot(normals1, building1_from_center_to_points), normals1)
-# dot2 = np.einsum('ij,ij->i', np.dot(normals2, building2_from_center_to_points), normals2)
-
-# dot1 = np.diag(np.dot(normals1,building1_from_center_to_points))
-# dot2 = np.diag(np.dot(normals2,building2_from_center_to_points))
 
 print("dot1: ")
 print(dot1)
@@ -155,8 +141,6 @@ o3d.visualization.draw_geometries([point_cloud_sampled])
 bpa_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(point_cloud_sampled,o3d.utility.DoubleVector([radius, radius * 1.5]))
 o3d.visualization.draw_geometries([bpa_mesh])
 
-# print(indexes1)
-# print(indexes2)
 
 dec_mesh = bpa_mesh.simplify_quadric_decimation(100000)
 
