@@ -38,16 +38,21 @@ max_height = np.max(points[:,2])
 
 diff = max_height - min_height
 segments_count = 1
-segment_height = diff/5
+segment_height = diff/segments_count
 
 print(diff)
 # new_points = points[(points[:,2]>(min_height+segment_height*3)) & (points[:,2]<(min_height+segment_height*4))]
-new_points = points
+point_variance = 0
+noise = np.random.normal(points,point_variance,points.shape)
+points2 = np.subtract(points,np.mean(points)*10)
+
+new_points = points + points2
 
 pcd = o3d.geometry.PointCloud()
 pcd.points = o3d.utility.Vector3dVector(new_points[:,:3])
 pcd.colors = o3d.utility.Vector3dVector(new_points[:,0:3]/255)
 pcd.normals = o3d.utility.Vector3dVector(new_points[:,0:3])
+o3d.visualization.draw_geometries([pcd])
 
 mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=15, origin=np.mean(points,axis=0))
 
@@ -68,17 +73,19 @@ for label in np.unique(labels):
     object.normals = o3d.utility.Vector3dVector(new_points[labels==label, 0:3])
 
     objects.append(object)
-
+print("objects count : {objects}".format(objects=len(np.unique(labels))))
 planes = list()
 objects_planes_normals = list()
 
 for idx, object in enumerate(objects):
     planes.append(list())
     objects_planes_normals.append(list())
+
     while(True):
         plane_model, inliers = object.segment_plane(distance_threshold=0.01, ransac_n=4, num_iterations=1000)
 
         inlier_cloud = object.select_by_index(inliers)
+
         rand_colors = np.abs(np.random.randn(3,1))
 
         inlier_cloud.paint_uniform_color(rand_colors)
@@ -139,7 +146,7 @@ print(object_planes_points_distinct_and_sorted)
 intersection_point = list()
 
 for idx, object in enumerate(object_planes_points_distinct_and_sorted):
-
+    intersection_point.append(list())
     for triple in object:
 
         plane1 = objects_planes_normals[idx][triple[0]]
@@ -156,15 +163,39 @@ for idx, object in enumerate(object_planes_points_distinct_and_sorted):
         norm = np.sqrt(np.dot(point,point))
 
         point = point/norm
-        intersection_point.append(point)
-        print(point)
 
-intersection_point = np.asarray(intersection_point)
-finalObject = o3d.geometry.PointCloud()
-finalObject.points = o3d.utility.Vector3dVector(intersection_point[:, :3])
-finalObject.colors = o3d.utility.Vector3dVector(intersection_point[:, 0:3] / 255)
-finalObject.normals = o3d.utility.Vector3dVector(intersection_point[:, 0:3])
-o3d.visualization.draw_geometries([finalObject])
+
+        planes_matrix = np.asarray([plane1, plane2, plane3])
+        point2 = np.linalg.solve(planes_matrix[:,0:3],planes_matrix[:,3])
+
+        intersection_point[idx].append(point2)
+        # print(point2)
+
+objects_lines = list()
+for idx, object_points in enumerate(intersection_point):
+    lines = list()
+    for i in range(len(object_points)):
+        for j in range(len(object_points)):
+            points_vector = np.subtract(object_points[j],object_points[i])
+            for plane in objects_planes_normals[idx]:
+                dot_result = abs(np.dot(points_vector,plane[0:3]))
+                print(dot_result)
+                if (dot_result <= 0.001):
+                    lines.append((i,j))
+    objects_lines.append(lines)
+
+objectsFinalPoints = list()
+for object_points in intersection_point:
+    intersection_point1 = np.asarray(object_points)
+    finalObject = o3d.geometry.PointCloud()
+    finalObject.points = o3d.utility.Vector3dVector(intersection_point1[:, :3])
+    finalObject.colors = o3d.utility.Vector3dVector(intersection_point1[:, 0:3] / 255)
+    finalObject.normals = o3d.utility.Vector3dVector(intersection_point1[:, 0:3])
+    objectsFinalPoints.append(finalObject)
+
+o3d.visualization.draw_geometries(np.asarray(objectsFinalPoints))
+
+# o3d.visualization.draw_geometries(np.asarray(final_meshes))
 
 meshes = list()
 
@@ -212,11 +243,15 @@ lines = [
     [2, 6],
     [3, 7],
 ]
-colors = [[1, 0, 0] for i in range(len(lines))]
-line_set = o3d.geometry.LineSet(
-    points=o3d.utility.Vector3dVector(points),
-    lines=o3d.utility.Vector2iVector(lines),
-)
-line_set.colors = o3d.utility.Vector3dVector(colors)
-o3d.visualization.draw_geometries([line_set])
+colors = [[1, 0, 0] for i in range(len(objects_lines[0]))]
+lines_sets = list()
+for idx, object_inter_points in enumerate(intersection_point):
+    line_set = o3d.geometry.LineSet(
+        points=o3d.utility.Vector3dVector(object_inter_points),
+        lines=o3d.utility.Vector2iVector(objects_lines[idx]),
+    )
+    line_set.colors = o3d.utility.Vector3dVector(colors)
+    lines_sets.append(line_set)
+
+o3d.visualization.draw_geometries(np.asarray(lines_sets))
 
