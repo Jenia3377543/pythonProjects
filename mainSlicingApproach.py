@@ -1,34 +1,13 @@
 import open3d as o3d
 import numpy as np
-def plane_intersect(a, b):
-    """
-    a, b   4-tuples/lists
-           Ax + By +Cz + D = 0
-           A,B,C,D in order
-
-    output: 2 points on line of intersection, np.arrays, shape (3,)
-    """
-    a_vec, b_vec = np.array(a[:3]), np.array(b[:3])
-
-    aXb_vec = np.cross(a_vec, b_vec)
-
-    A = np.array([a_vec, b_vec, aXb_vec])
-    d = np.array([-a[3], -b[3], 0.]).reshape(3,1)
-
-# could add np.linalg.det(A) == 0 test to prevent linalg.solve throwing error
-
-    p_inter = np.linalg.solve(A, d).T
-
-    return p_inter[0], (p_inter + aXb_vec)[0]
-
-
 
 
 input_path="C:/Technion/semester6/project/pythonProjects/"
 output_path="C:/Technion/semester6/project/pythonProjects/outputs"
+datanameply="arc_result.ply"
+dataname="block.off"
 
-
-datanameply="block_result.ply"
+#--------------------------------------------- Getting points from mesh --------------------------------------
 mesh = o3d.io.read_triangle_mesh(input_path+datanameply)
 point_cloud_sampled = mesh.sample_points_poisson_disk(5000)
 
@@ -37,17 +16,15 @@ min_height = np.min(points[:,2])
 max_height = np.max(points[:,2])
 
 diff = max_height - min_height
-segments_count = 1
+segments_count = 5
 segment_height = diff/segments_count
 
 print(diff)
 # new_points = points[(points[:,2]>(min_height+segment_height*3)) & (points[:,2]<(min_height+segment_height*4))]
 point_variance = 0
 noise = np.random.normal(points,point_variance,points.shape)
-points2 = np.subtract(points,np.mean(points)*10)
 
-new_points = points + points2
-
+new_points = points
 pcd = o3d.geometry.PointCloud()
 pcd.points = o3d.utility.Vector3dVector(new_points[:,:3])
 pcd.colors = o3d.utility.Vector3dVector(new_points[:,0:3]/255)
@@ -55,13 +32,12 @@ pcd.normals = o3d.utility.Vector3dVector(new_points[:,0:3])
 o3d.visualization.draw_geometries([pcd])
 
 mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=15, origin=np.mean(points,axis=0))
-
+#--------------------------------------------- Divide points to objects --------------------------------------
 distances = pcd.compute_nearest_neighbor_distance()
 avg_dist = np.mean(distances)
 radius = 1.5 * avg_dist
 
 objects = list()
-
 min_distance = np.min(distances)
 labels = np.asarray(pcd.cluster_dbscan(eps=6*min_distance, min_points=50))
 print(np.unique(labels))
@@ -74,9 +50,10 @@ for label in np.unique(labels):
 
     objects.append(object)
 print("objects count : {objects}".format(objects=len(np.unique(labels))))
+
+#--------------------------------------------- Fit planes with RANSAC --------------------------------------
 planes = list()
 objects_planes_normals = list()
-
 for idx, object in enumerate(objects):
     planes.append(list())
     objects_planes_normals.append(list())
@@ -86,17 +63,32 @@ for idx, object in enumerate(objects):
 
         inlier_cloud = object.select_by_index(inliers)
 
-        rand_colors = np.abs(np.random.randn(3,1))
-
-        inlier_cloud.paint_uniform_color(rand_colors)
-        planes[idx].append(inlier_cloud)
-        objects_planes_normals[idx].append(plane_model)
+        if(len(np.asarray(inlier_cloud.points)) > 30):
+            rand_colors = np.abs(np.random.randn(3,1))
+            inlier_cloud.paint_uniform_color(rand_colors)
+            planes[idx].append(inlier_cloud)
+            objects_planes_normals[idx].append(plane_model)
 
         object = object.select_by_index(inliers, invert=True)
 
         if(len(np.asarray(object.points)) < 10):
             break
 
+#--------------------------------------------- Create meshes for each plane (visualizing) --------------------------------------
+meshes = list()
+for object in planes:
+    for plane in object:
+        mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
+                   plane,
+                   o3d.utility.DoubleVector([radius, radius * 2]))
+        mesh.compute_vertex_normals()
+        # mesh.compute_triangle_normals()
+        meshes.append(mesh)
+
+print(len(meshes))
+o3d.visualization.draw_geometries(np.asarray(meshes))
+
+#--------------------------------------------- Find neighbor planes --------------------------------------
 threshold = 5
 planes_connectivity = list()
 for obj_ind, object in enumerate(planes):
@@ -111,14 +103,15 @@ for obj_ind, object in enumerate(planes):
             if(distance < threshold):
                 planes_connectivity[obj_ind][ind1].append(ind2)
 
-print(planes_connectivity)
+# print(planes_connectivity)
 print(len(planes))
-print('objects planes normals=',objects_planes_normals)
+# print('objects planes normals=',objects_planes_normals)
 # o3d.visualization.draw_geometries(np.asarray(planes))
 # o3d.visualization.draw_geometries([mesh])
 
 # print(plane_model)
 
+#--------------------------------------------- Find corner edges --------------------------------------
 object_planes_points = list()
 for idx, object_connectivity_list in enumerate(planes_connectivity):
     object_planes_points.append(list())
@@ -143,8 +136,9 @@ for object in object_planes_points2_sorted:
 
 print(object_planes_points_distinct_and_sorted)
 
-intersection_point = list()
 
+
+intersection_point = list()
 for idx, object in enumerate(object_planes_points_distinct_and_sorted):
     intersection_point.append(list())
     for triple in object:
@@ -153,24 +147,13 @@ for idx, object in enumerate(object_planes_points_distinct_and_sorted):
         plane2 = objects_planes_normals[idx][triple[1]]
         plane3 = objects_planes_normals[idx][triple[2]]
 
-        point11, point12 = plane_intersect(plane1, plane2)
-        point21, point22 = plane_intersect(plane2, plane3)
-
-        vector1 = np.subtract(point12,point11)
-        vector2 = np.subtract(point22,point21)
-
-        point = np.cross(vector1,vector2)
-        norm = np.sqrt(np.dot(point,point))
-
-        point = point/norm
-
-
         planes_matrix = np.asarray([plane1, plane2, plane3])
-        point2 = np.linalg.solve(planes_matrix[:,0:3],planes_matrix[:,3])
+        inter_point = np.linalg.solve(planes_matrix[:,0:3],planes_matrix[:,3])
 
-        intersection_point[idx].append(point2)
+        intersection_point[idx].append(inter_point)
         # print(point2)
 
+#--------------------------------------------- Find lines between point --------------------------------------
 objects_lines = list()
 for idx, object_points in enumerate(intersection_point):
     lines = list()
@@ -179,7 +162,7 @@ for idx, object_points in enumerate(intersection_point):
             points_vector = np.subtract(object_points[j],object_points[i])
             for plane in objects_planes_normals[idx]:
                 dot_result = abs(np.dot(points_vector,plane[0:3]))
-                print(dot_result)
+                # print(dot_result)
                 if (dot_result <= 0.001):
                     lines.append((i,j))
     objects_lines.append(lines)
@@ -197,20 +180,6 @@ o3d.visualization.draw_geometries(np.asarray(objectsFinalPoints))
 
 # o3d.visualization.draw_geometries(np.asarray(final_meshes))
 
-meshes = list()
-
-for object in planes:
-    for plane in object:
-        mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
-                   plane,
-                   o3d.utility.DoubleVector([radius, radius * 2]))
-        mesh.compute_vertex_normals()
-        # mesh.compute_triangle_normals()
-        meshes.append(mesh)
-
-print(len(meshes))
-
-o3d.visualization.draw_geometries(np.asarray(meshes))
 
 # o3d.visualization.draw_geometries(np.asarray(meshes))
 # bpa_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(pcd,o3d.utility.DoubleVector([radius, radius * 1.5]))
@@ -219,30 +188,6 @@ o3d.visualization.draw_geometries(np.asarray(meshes))
 # o3d.io.write_triangle_mesh(output_path+"bpa_mesh11.ply", total_mesh,write_vertex_colors=False,write_vertex_normals=False,write_triangle_uvs=False,write_ascii=True)
 
 print("Let's draw a box using o3d.geometry.LineSet.")
-points = [
-    [0, 0, 0],
-    [1, 0, 0],
-    [0, 1, 0],
-    [1, 1, 0],
-    [0, 0, 1],
-    [1, 0, 1],
-    [0, 1, 1],
-    [1, 1, 1],
-]
-lines = [
-    [0, 1],
-    [0, 2],
-    [1, 3],
-    [2, 3],
-    [4, 5],
-    [4, 6],
-    [5, 7],
-    [6, 7],
-    [0, 4],
-    [1, 5],
-    [2, 6],
-    [3, 7],
-]
 colors = [[1, 0, 0] for i in range(len(objects_lines[0]))]
 lines_sets = list()
 for idx, object_inter_points in enumerate(intersection_point):
