@@ -1,10 +1,11 @@
 import open3d as o3d
 import numpy as np
+import removeLines
 
 
 input_path="C:/Technion/semester6/project/pythonProjects/"
 output_path="C:/Technion/semester6/project/pythonProjects/outputs"
-datanameply="arc_result.ply"
+datanameply="block_result.ply"
 dataname="block.off"
 
 #--------------------------------------------- Getting points from mesh --------------------------------------
@@ -155,17 +156,64 @@ for idx, object in enumerate(object_planes_points_distinct_and_sorted):
 
 #--------------------------------------------- Find lines between point --------------------------------------
 objects_lines = list()
+# for idx, object_points in enumerate(intersection_point):
+#     lines = list()
+#     for i in range(len(object_points)):
+#         for j in range(len(object_points)):
+#             points_vector = np.subtract(object_points[j],object_points[i])
+#             for plane in objects_planes_normals[idx]:
+#                 dot_result = abs(np.dot(points_vector,plane[0:3]))
+#
+#                 # Check if line is internal
+#                 if (dot_result <= 0.001):
+#                     lines.append((i,j))
+#     objects_lines.append(lines)
+
+all_objects_planes_points = list()
 for idx, object_points in enumerate(intersection_point):
-    lines = list()
-    for i in range(len(object_points)):
-        for j in range(len(object_points)):
-            points_vector = np.subtract(object_points[j],object_points[i])
-            for plane in objects_planes_normals[idx]:
-                dot_result = abs(np.dot(points_vector,plane[0:3]))
-                # print(dot_result)
-                if (dot_result <= 0.001):
-                    lines.append((i,j))
-    objects_lines.append(lines)
+    object_planes_points = list()
+
+    for object_normal in objects_planes_normals[idx]:
+        points_on_plane = list()
+
+        for point in object_points:
+            point_vect = np.append(point,1)
+
+            if(np.dot(np.asarray(point_vect),object_normal) <= 0.01):
+                points_on_plane.append(point)
+
+        object_planes_points.append(points_on_plane)
+
+    all_objects_planes_points.append(object_planes_points)
+
+pairs_points = list()
+
+final_lineset = list()
+final_objects_lines = list()
+
+for object_planes_points in all_objects_planes_points:
+
+    pairs_points = removeLines.remove_surface_lines(len(object_planes_points), object_planes_points)
+    lineset_obj = list()
+
+    for plane_points in pairs_points:
+        iter = 0
+        points_plane = list()
+        lines_plane = list()
+        for idx, pair in enumerate(plane_points):
+            points_plane.append(pair[0])
+            points_plane.append(pair[1])
+            indx1 = iter
+            iter = iter + 1
+            indx2 = iter
+            lines_plane.append([indx1, indx2])
+
+        lineset_obj.append(o3d.geometry.LineSet(
+                points=o3d.utility.Vector3dVector(points_plane),
+                lines=o3d.utility.Vector2iVector(lines_plane),
+            ))
+
+    final_objects_lines.append(np.sum(np.asarray(lineset_obj)))
 
 objectsFinalPoints = list()
 for object_points in intersection_point:
@@ -176,7 +224,8 @@ for object_points in intersection_point:
     finalObject.normals = o3d.utility.Vector3dVector(intersection_point1[:, 0:3])
     objectsFinalPoints.append(finalObject)
 
-o3d.visualization.draw_geometries(np.asarray(objectsFinalPoints))
+# o3d.visualization.draw_geometries(np.asarray(objectsFinalPoints))
+o3d.visualization.draw_geometries([np.sum(final_objects_lines)])
 
 # o3d.visualization.draw_geometries(np.asarray(final_meshes))
 
