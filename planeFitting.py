@@ -80,6 +80,7 @@ class SceneFitter:
   def find_intersections_points_and_lines(self):
     lines = list()
     for building in self.buildings:
+      building.find_neighbor_planes()
       building.find_intersections()
       lines.append(building.find_lines())
 
@@ -116,7 +117,7 @@ class Building:
         if (ind1 == ind2):
           continue
 
-        distance = np.min(plane1.compute_point_cloud_distance(plane2))
+        distance = np.min(plane1.points.compute_point_cloud_distance(plane2.points))
         if (distance < self.threshold_neighbor_planes):
           self.near_planes_connectivity[ind1].append(ind2)
 
@@ -151,9 +152,10 @@ class Building:
         for j in range(len(self.intersections)):
           points_vector = np.subtract(self.intersections[j], self.intersections[i])
           for plane in self.planes:
-            dot_result = abs(np.dot(points_vector, plane[0:3]))
+            dot_result = abs(np.dot(points_vector, plane.normal[0:3]))
             # print(dot_result)
             if (dot_result <= 0.001):
+              print("dot result <= 0.001")
               self.lines.append((i, j))
     print("lines count: {count}".format(count=len(self.lines)))
     self.line_set = o3d.geometry.LineSet(
@@ -198,6 +200,7 @@ sceneFitter = SceneFitter(point_cloud_sampled)
 
 sceneFitter.segmentObjects()
 sceneFitter.fitPlanesForObjects()
+
 o3d.visualization.draw_geometries([np.sum(np.asarray(sceneFitter.meshes_scene()))])
 o3d.visualization.draw_geometries([np.sum(sceneFitter.find_intersections_points_and_lines())])
 
