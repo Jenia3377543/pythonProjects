@@ -1,5 +1,6 @@
 import open3d as o3d
 import numpy as np
+import itertools
 
 class SceneFitter:
   eps = 6
@@ -43,9 +44,11 @@ class SceneFitter:
 
 #     Start to fit planes for objects we detected in segmentObject(self) step
     for idx, object in enumerate(self.objects):
-      building = Building()
+      building = Building(object)
+
+      hasPlanes = False
       while (True):
-        hasPlanes = False
+
         # Find plane with RANSAC
         plane_model, inliers = object.segment_plane(distance_threshold=0.01, ransac_n=4, num_iterations=1000)
         # Select points that belong to the plane
@@ -86,10 +89,28 @@ class SceneFitter:
 
     return np.asarray(lines)
 
+  def get_planes_centers_of_mass(self):
+    centers_of_mass = []
+
+    pc_centers_of_mass = o3d.geometry.PointCloud()
+
+
+    for building in self.buildings:
+      for building_plane in building.planes:
+        centers_of_mass.append(building_plane.center_of_mass)
+
+    centers_of_mass = np.asarray(centers_of_mass)
+
+    pc_centers_of_mass.points = o3d.utility.Vector3dVector(centers_of_mass[:, :3])
+    pc_centers_of_mass.colors = o3d.utility.Vector3dVector(centers_of_mass[:, 0:3] / 255)
+    pc_centers_of_mass.normals = o3d.utility.Vector3dVector(centers_of_mass[:, 0:3])
+
+    return pc_centers_of_mass
+
 class Building:
   threshold_neighbor_planes = 5
 
-  def __init__(self):
+  def __init__(self, pointCloud):
     self.planes = list()
     self.lines = list()
     self.meshes = list()
@@ -98,6 +119,19 @@ class Building:
     self.intersections = list()
     self.lines = list()
     self.line_set = list()
+    self.pointCloud = pointCloud
+    self.center_of_mass = np.asarray(pointCloud.get_center())
+
+    cm = o3d.geometry.PointCloud()
+    cm.points = o3d.utility.Vector3dVector([pointCloud.get_center()])
+
+    self.bounding_radius = 5*np.max(pointCloud.compute_point_cloud_distance(cm))
+    print("bounding radius = {radius}".format(radius=self.bounding_radius))
+
+  def is_inside(self, point):
+    if(np.linalg.norm(np.subtract(point, self.center_of_mass)) <= self.bounding_radius):
+      return True
+    return False
 
   def building_mesh(self):
     if(len(self.planes) <= 0):
@@ -145,9 +179,15 @@ class Building:
 
         planes_matrix = np.asarray([plane1, plane2, plane3])
         inter_point = np.linalg.solve(planes_matrix[:, 0:3], planes_matrix[:, 3])
+        # if(self.is_inside(inter_point)):
         self.intersections.append(inter_point)
 
+        self.planes[triple[0]].inter_points.append(inter_point)
+        self.planes[triple[1]].inter_points.append(inter_point)
+        self.planes[triple[2]].inter_points.append(inter_point)
+
   def find_lines(self):
+    """
     for i in range(len(self.intersections)):
         for j in range(len(self.intersections)):
           points_vector = np.subtract(self.intersections[j], self.intersections[i])
@@ -157,19 +197,45 @@ class Building:
             if (dot_result <= 0.001):
               print("dot result <= 0.001")
               self.lines.append((i, j))
-    print("lines count: {count}".format(count=len(self.lines)))
-    self.line_set = o3d.geometry.LineSet(
-      points=o3d.utility.Vector3dVector(self.intersections),
-      lines=o3d.utility.Vector2iVector(self.lines),
-    )
-    colors = [[1, 0, 0] for i in range(len(self.lines))]
-    self.line_set.colors = o3d.utility.Vector3dVector(colors)
+    """
 
-    return self.line_set
+    line_sets = []
+    for plane in self.planes:
+      index = 0
+      final_lines = []
+      intersections = []
+      plane_points_pairs = plane.remove_surface_lines()
+      for pair in plane_points_pairs:
+        intersections.append(pair[0])
+        intersections.append(pair[1])
+        final_lines.append((index, index+1))
+        index = index + 2
+      line_set = o3d.geometry.LineSet(
+        points=o3d.utility.Vector3dVector(intersections),
+        lines=o3d.utility.Vector2iVector(final_lines),
+      )
+      # rand_color = np.abs(np.random.randn(3, 1))
+      rand_color = [0, 0, 1]
+      colors = [rand_color for i in range(len(final_lines))]
+      line_set.colors = o3d.utility.Vector3dVector(colors)
+      line_sets.append(line_set)
+
+    # print("lines count: {count}".format(count=len(final_lines)))
+    # print("intersections={intersections}".format(intersections=intersections))
+    # self.line_set = o3d.geometry.LineSet(
+    #   points=o3d.utility.Vector3dVector(intersections),
+    #   lines=o3d.utility.Vector2iVector(final_lines),
+    # )
+    # colors = [[1, 0, 0] for i in range(len(final_lines))]
+    # self.line_set.colors = o3d.utility.Vector3dVector(colors)
+
+    return np.sum(line_sets)
 
 class Plane:
   def __init__(self, points, normal):
     self.points = points
+    self.center_of_mass = []
+    self.inter_points = list()
     self.normal = normal
     self.mesh = None
     self.distances = points.compute_nearest_neighbor_distance()
@@ -183,6 +249,83 @@ class Plane:
     mesh.compute_vertex_normals()
     return mesh
 
+  #input: intesection_points array.
+  # intersection_points[index]=a list of intersection points which are on plane number index
+  # output: relevant_intersec_points list.
+  # relevant_intersec_points[index]=a list of intersection points which are on plane number index, and are relevant
+  def remove_surface_lines(self):
+      points = self.inter_points
+
+      center_of_mass = []
+      for axis in range(3):
+        min_value = np.min(np.asarray(points)[:,axis])
+        max_value = np.max(np.asarray(points)[:,axis])
+        center_of_mass.append((max_value-min_value)/2+min_value)
+      # center_of_mass=np.mean(points,axis=0)
+      self.center_of_mass = center_of_mass
+
+      print("center_of_mass={center_of_mass}".format(center_of_mass=center_of_mass))
+      all_pairs=list(itertools.combinations(points,2))
+      num_of_points=len(points)
+      dists_pairs=list()
+
+      for pair in all_pairs:
+          # finding the vertical distance from the center of the mass to the line between the 2 points in pair:
+          dist = np.linalg.norm(np.cross(np.subtract(pair[1],pair[0]), np.subtract(center_of_mass,pair[1])))/np.linalg.norm(np.subtract(pair[1],pair[0]))
+          print("dist={dist}".format(dist=dist))
+          dist_pair=(dist, pair)
+          # print("pair={pair}".format(pair=pair))
+
+          dists_pairs.append(dist_pair)
+
+
+      dists_array=np.asarray(dists_pairs)
+      #for plane with N intersaction points, we will choose the N lines
+      # which have the biggest distance from center of mass:
+
+      indexes = np.argsort(dists_array[:,0])[-num_of_points:]
+
+      return dists_array[indexes,1]
+
+  def remove_surface_lines2(self):
+      points = self.inter_points
+      center_of_mass=np.mean(points,axis=0)
+      self.center_of_mass = center_of_mass
+
+      point_pairs = []
+
+      vectors_to_center_of_mass = []
+      index=1
+      for point in points:
+        vector=(index,np.subtract(center_of_mass,point))
+        vectors_to_center_of_mass.append(vector)
+        index=index+1
+
+      for vector in vectors_to_center_of_mass:
+        min_angle = 360
+        min_vector = vector[1]
+        for vector2 in vectors_to_center_of_mass:
+          if(vector[0]>=vector2[0]):
+            continue
+      #       check angle
+          vector = np.asarray(vector[1])
+          vector2 = np.asarray(vector2[1])
+          arcos = np.dot(vector, vector2)/(np.linalg.norm(vector), np.linalg.norm(vector2))
+
+          print("arcos={arcos}".format(arcos=arcos))
+
+          temp_angle = np.arccos(arcos)
+          if(min_angle>temp_angle):
+            min_vector = vector2
+            min_angle = temp_angle
+
+        point_pairs.append((
+          np.subtract(center_of_mass, vector),
+          np.subtract(center_of_mass, min_vector)
+        ))
+
+      return point_pairs
+
 class Line:
   def __init__(self):
     self.points = list()
@@ -190,6 +333,7 @@ class Line:
 
 input_path="C:/Technion/semester6/project/pythonProjects/"
 output_path="C:/Technion/semester6/project/pythonProjects/outputs"
+# datanameply="arc_result.ply"
 datanameply="block_result.ply"
 dataname="block.off"
 
@@ -203,4 +347,5 @@ sceneFitter.fitPlanesForObjects()
 
 o3d.visualization.draw_geometries([np.sum(np.asarray(sceneFitter.meshes_scene()))])
 o3d.visualization.draw_geometries([np.sum(sceneFitter.find_intersections_points_and_lines())])
+
 
