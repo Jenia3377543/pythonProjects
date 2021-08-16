@@ -28,8 +28,8 @@ init_pointD = np.asarray([1, 0, 0])
 # final_pointD = np.asarray([1, 0, 0])
 
 final_pointA = np.asarray([0, 0, 0])
-final_pointB = np.asarray([1, 0, 1])
-final_pointC = np.asarray([2, 0, 1])
+final_pointB = np.asarray([0, 0, 1])
+final_pointC = np.asarray([1, 0, 1])
 final_pointD = np.asarray([1, 0, 0])
 
 
@@ -76,21 +76,27 @@ O = np.mean(final_points,axis=0)
 print("Translation: {translation}".format(translation=O))
 initial_center_of_mass = np.mean(initial_points,axis=0)
 T = [
-    [1, 0, 0, O[0]-initial_center_of_mass[0]],
-    [0, 1, 0, O[1]-initial_center_of_mass[1]],
-    [0, 0, 1, O[2]-initial_center_of_mass[2]],
+    [1, 0, 0, O[0]],
+    [0, 1, 0, O[1]],
+    [0, 0, 1, O[2]],
     [0, 0, 0,   1],
 ]
+# T = [
+#     [1, 0, 0, 0],
+#     [0, 1, 0, 0],
+#     [0, 0, 1, 0],
+#     [O[0], O[1], O[2],   1],
+# ]
 
 
 # M = np.matmul(np.matmul(T,R),S)
-M = np.matmul(T,np.matmul(R,S))
+M = np.matmul(np.matmul(T,R),S)
 
 print(M)
 
 mesh_box = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=0.001)
 mesh_box.compute_vertex_normals()
-mesh_box.translate(-initial_center_of_mass)
+
 mesh_box.paint_uniform_color([0.9, 0.1, 0.1])
 
 initial_normal = [0, 0, 1]
@@ -100,7 +106,7 @@ normal = [1, 0, 0]
 
 mesh = o3d.geometry.TriangleMesh.create_coordinate_frame()
 # mesh.tr
-mesh_box_copy = copy.deepcopy(mesh_box).transform(M)
+mesh_box_copy = copy.deepcopy(mesh_box).translate(-mesh_box.get_center()).transform(M)
 mesh_box_copy.paint_uniform_color([0.7, 0.1, 0.9])
 
 print("Previous center in : {center}".format(center=mesh_box.get_center()))

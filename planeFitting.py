@@ -85,10 +85,13 @@ class SceneFitter:
     if(len(self.buildings) <= 0):
       print("There is no building to find mesh!")
     meshes_with_planes = list()
+    pcd_with_planes = list()
     for building in self.buildings:
-      meshes_with_planes.append(building.building_mesh_with_planes())
+      mesh,pcd = building.building_mesh_with_planes()
+      meshes_with_planes.append(mesh)
+      pcd_with_planes.append(pcd)
 
-    return np.sum(np.asarray(meshes_with_planes))
+    return np.sum(np.asarray(meshes_with_planes)), np.sum(np.asarray(pcd_with_planes))
 
   def find_intersections_points_and_lines(self):
     lines = list()
@@ -98,6 +101,12 @@ class SceneFitter:
       lines.append(building.find_lines())
 
     return np.sum(np.asarray(lines))
+
+  def get_total_inter_points(self):
+    pcd = o3d.geometry.PointCloud()
+    for building in self.buildings:
+      pcd += building.get_inter_points()
+    return pcd
 
   def get_planes_centers_of_mass(self):
     centers_of_mass = []
@@ -138,6 +147,12 @@ class Building:
     self.bounding_radius = 2*np.max(pointCloud.compute_point_cloud_distance(cm))
     print("bounding radius = {radius}".format(radius=self.bounding_radius))
 
+  def get_inter_points(self):
+    pcd = o3d.geometry.PointCloud()
+    for plane in self.planes:
+      pcd+=plane.get_inter_points_as_pcd()
+    return pcd
+
   def is_inside(self, point):
     dist = np.linalg.norm(np.subtract(point, self.center_of_mass))
     print("-----START-----")
@@ -163,10 +178,13 @@ class Building:
       print("There is no planes to find meshes!")
       return
     mesh_with_planes = list()
+    pcd_with_planes = list()
     for plane in self.planes:
-      mesh_with_planes.append(plane.find_plane())
+      mesh,pcd = plane.find_plane()
+      mesh_with_planes.append(mesh)
+      pcd_with_planes.append(pcd)
 
-    return np.sum(np.asarray(mesh_with_planes))
+    return np.sum(np.asarray(mesh_with_planes)), np.sum(np.asarray(pcd_with_planes))
 
   def find_neighbor_planes(self):
     # Find neighbor planes
@@ -210,6 +228,9 @@ class Building:
           self.planes[triple[0]].inter_points.append(inter_point)
           self.planes[triple[1]].inter_points.append(inter_point)
           self.planes[triple[2]].inter_points.append(inter_point)
+
+    for plane in self.planes:
+      plane = np.unique(plane)
 
   def find_lines(self):
     """
@@ -267,6 +288,14 @@ class Plane:
     self.distances = points.compute_nearest_neighbor_distance()
     self.avg_dist = np.mean(self.distances)
 
+  def get_inter_points_as_pcd(self):
+    points = np.asarray(self.inter_points)
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    pcd.colors = o3d.utility.Vector3dVector(points / 255)
+    pcd.normals = o3d.utility.Vector3dVector(points)
+    return pcd
+
   def get_mesh(self):
     radius = 1.5 * self.avg_dist
     mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
@@ -276,6 +305,8 @@ class Plane:
     return mesh
 
   def find_plane(self):
+    print("Inter plane points: {count}".format(count=len(self.inter_points)))
+    print("Inter plane points: {points}".format(points=self.inter_points))
     vectors = np.subtract(np.asarray(self.inter_points)[1:,:],np.asarray(self.inter_points[0]))
     indexes = np.argsort(np.linalg.norm(vectors,axis=1))
 
@@ -284,6 +315,12 @@ class Plane:
 
     normA = np.linalg.norm(vectorA)
     normB = np.linalg.norm(vectorB)
+
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(np.asarray([self.inter_points[0],self.inter_points[0]]))
+    pcd.colors = o3d.utility.Vector3dVector(np.asarray([self.inter_points[0],self.inter_points[0]]) / 255)
+    pcd.normals = o3d.utility.Vector3dVector(np.asarray([vectorA, vectorB]))
 
     S = np.asarray([
       [normA, 0, 0, 0],
@@ -306,21 +343,11 @@ class Plane:
 
     print("Translation: {translation}".format(translation=O))
 
-    init_pointA = np.asarray([0, 0, 0])
-    init_pointB = np.asarray([0, 1, 0])
-    init_pointC = np.asarray([1, 1, 0])
-    init_pointD = np.asarray([1, 0, 0])
 
-    initial_points = np.asarray([
-      init_pointA, init_pointB,
-      init_pointC, init_pointD
-    ])
-
-    initial_center_of_mass = np.mean(initial_points, axis=0)
     T = [
-      [1, 0, 0, O[0] - initial_center_of_mass[0]],
-      [0, 1, 0, O[1] - initial_center_of_mass[1]],
-      [0, 0, 1, O[2] - initial_center_of_mass[2]],
+      [1, 0, 0, O[0]],
+      [0, 1, 0, O[1]],
+      [0, 0, 1, O[2]],
       [0, 0, 0, 1],
     ]
 
@@ -332,7 +359,7 @@ class Plane:
     mesh_box.translate(-mesh_box.get_center()).transform(M)
     mesh_box.paint_uniform_color([0.9, 0.1, 0.1])
 
-    return mesh_box
+    return mesh_box,pcd
 
   #input: intesection_points array.
   # intersection_points[index]=a list of intersection points which are on plane number index
@@ -439,7 +466,13 @@ sceneFitter.fitPlanesForObjects()
 
 o3d.visualization.draw_geometries([np.sum(np.asarray(sceneFitter.meshes_scene()))])
 o3d.visualization.draw_geometries([np.sum(sceneFitter.find_intersections_points_and_lines())])
-o3d.visualization.draw_geometries([np.sum(np.asarray(sceneFitter.meshes_with_planes_scene()))])
 
-o3d.io.write_triangle_mesh("./temp_out.ply", sceneFitter.meshes_with_planes_scene())
+mesh, pcd = sceneFitter.meshes_with_planes_scene()
+o3d.visualization.draw_geometries([mesh, pcd])
+pcd = sceneFitter.get_total_inter_points()
+print("pcd length = {length}".format(length=len(np.unique(pcd.points))))
+o3d.visualization.draw_geometries([pcd])
+# o3d.visualization.draw_geometries([np.sum(np.asarray(sceneFitter.meshes_with_planes_scene()))])
+
+# o3d.io.write_triangle_mesh("./temp_out.ply", sceneFitter.meshes_with_planes_scene())
 
