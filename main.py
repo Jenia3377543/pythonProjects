@@ -1,15 +1,7 @@
 import pptk
 import numpy as np
 import open3d as o3d
-# import arcpy
 
-# P = np.random.rand(100,3)
-# input_path="C:/Technion/semester6/project/pythonProjects/block.off"
-# # df = np.genfromtxt(input_path, delimiter=' ', max_rows=13631)
-# df = np.genfromtxt(input_path, delimiter=' ', max_rows=23794)
-#
-#
-# v = pptk.viewer(df)
 
 def lod_mesh_export(mesh, lods, extension, path):
     mesh_lods={}
@@ -20,24 +12,13 @@ def lod_mesh_export(mesh, lods, extension, path):
     print("generation of "+str(i)+" LoD successful")
     return mesh_lods
 
-input_path="C:/Technion/semester6/project/pythonProjects/"
+input_path="./buildings_files/"
 output_path="C:/Technion/semester6/project/pythonProjects/outputs"
-dataname="arc.off"
+dataname="building_28.txt"
 
 
-point_cloud = np.loadtxt(input_path+dataname,skiprows=2, max_rows=13631)
+point_cloud = np.loadtxt(input_path + dataname,skiprows=1)
 
-#
-point_variance = 5
-noise = np.random.normal(point_cloud,point_variance,point_cloud.shape)
-
-# point_cloud = point_cloud + noise
-
-with open('noised_arc.txt','w') as f:
-    for row in range(np.size(point_cloud,0)):
-         np.savetxt(f, [point_cloud[row,:]], fmt='%.2f')
-
-#
 
 pcd = o3d.geometry.PointCloud()
 pcd.points = o3d.utility.Vector3dVector(point_cloud[:,:3])
