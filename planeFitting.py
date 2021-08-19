@@ -1,6 +1,9 @@
 import open3d as o3d
 import numpy as np
 import itertools
+import cv2
+
+texture = cv2.imread('./cube_uv.png')
 
 class SceneFitter:
   eps = 6
@@ -15,6 +18,21 @@ class SceneFitter:
     self.distances = self.pointCloud.compute_nearest_neighbor_distance()
     self.min_distance = np.min(self.distances)
 
+  def get_building_triangle_mesh(self):
+    meshes = []
+    for building in self.buildings:
+      vert, faces = building.get_building_triangles()
+      temp_mesh = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(vert),
+                                o3d.utility.Vector3iVector(faces))
+      v_uv = np.random.rand(len(faces) * 3, 2)
+      temp_mesh.compute_vertex_normals()
+      temp_mesh.triangle_uvs = o3d.utility.Vector2dVector(v_uv)
+      temp_mesh.textures = [o3d.geometry.Image(texture)]
+      temp_mesh.triangle_material_ids = o3d.utility.IntVector([0] * len(faces))
+
+      meshes.append(temp_mesh)
+
+    return np.sum(np.asarray(meshes))
   '''
    Suppose for now that only building can be in point cloud (there no: cars, and so on)
   '''
@@ -146,6 +164,36 @@ class Building:
 
     self.bounding_radius = 2*np.max(pointCloud.compute_point_cloud_distance(cm))
     print("bounding radius = {radius}".format(radius=self.bounding_radius))
+
+
+
+
+  def get_building_triangles(self):
+    all_intersections = []
+    for plane in self.planes:
+      # if(len(plane.inter_points)>4):
+      #   continue
+      for point in plane.inter_points:
+        all_intersections.append(point)
+
+    all_intersections = np.asarray(all_intersections)
+
+    # all_intersections = np.unique(np.concatenate(all_intersections,axis=0),axis=1)
+    all_intersections = np.unique(all_intersections,axis=1)
+
+    print(f'all intersections: {all_intersections}')
+    building_triangles = []
+    for plane in self.planes:
+      # if (len(plane.inter_points) > 4):
+      #   continue
+      for triangle in plane.get_plane_triangles(self.center_of_mass):
+        building_triangles.append(triangle)
+
+
+    return all_intersections, np.asarray([[np.where(np.all(np.abs(np.subtract(all_intersections,point))<1, axis=1))[0][0] for point in triangle] for triangle in building_triangles])
+    # return all_intersections, np.asarray(faces)
+
+
 
   def get_inter_points(self):
     pcd = o3d.geometry.PointCloud()
@@ -287,6 +335,39 @@ class Plane:
     self.mesh = None
     self.distances = points.compute_nearest_neighbor_distance()
     self.avg_dist = np.mean(self.distances)
+
+  def get_plane_triangles(self, object_center_of_mass):
+    points = np.asarray(self.inter_points)
+    normal = self.normal[0:3]
+
+    if(np.dot(normal,object_center_of_mass)+self.normal[3]>0):
+      normal = -normal
+
+    center_of_mass = np.mean(points, axis=0)
+    possible_axis = np.subtract(points, points[0])
+    p = possible_axis[np.argsort(np.linalg.norm(possible_axis, axis=1))[-1]]
+    q = np.cross(normal, p)
+
+    indexes = np.argsort(
+      np.arctan2(
+        np.dot(np.cross(np.subtract(points, center_of_mass), q), normal),
+        np.dot(np.cross(np.subtract(points, center_of_mass), p), normal)
+      )
+    )
+
+    ordered_points = points[indexes]
+    initial_point = ordered_points[0]
+    points_count = len(ordered_points)
+
+    triangles_list = list()
+    start_idx = 1
+    while (start_idx + 1 < points_count):
+      triangles_list.append([initial_point,
+                             ordered_points[start_idx],
+                             ordered_points[start_idx + 1]])
+      start_idx = start_idx + 1
+
+    return np.asarray(triangles_list)
 
   def get_inter_points_as_pcd(self):
     points = np.asarray(self.inter_points)
@@ -472,7 +553,9 @@ o3d.visualization.draw_geometries([mesh, pcd])
 pcd = sceneFitter.get_total_inter_points()
 print("pcd length = {length}".format(length=len(np.unique(pcd.points))))
 o3d.visualization.draw_geometries([pcd])
+
+o3d.visualization.draw_geometries([sceneFitter.get_building_triangle_mesh()])
 # o3d.visualization.draw_geometries([np.sum(np.asarray(sceneFitter.meshes_with_planes_scene()))])
 
-# o3d.io.write_triangle_mesh("./temp_out.ply", sceneFitter.meshes_with_planes_scene())
+# o3d.io.write_triangle_mesh("./initial_mesh.obj", sceneFitter.get_building_triangle_mesh(), write_triangle_uvs=True)
 
