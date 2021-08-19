@@ -23,7 +23,7 @@ point_cloud = np.loadtxt(input_path + dataname,skiprows=1)
 pcd = o3d.geometry.PointCloud()
 pcd.points = o3d.utility.Vector3dVector(point_cloud[:,:3])
 pcd.colors = o3d.utility.Vector3dVector(point_cloud[:,0:3]/255)
-pcd.normals = o3d.utility.Vector3dVector(point_cloud[:,0:3])
+# pcd.normals = o3d.utility.Vector3dVector(point_cloud[:,0:3])
 o3d.visualization.draw_geometries([pcd])
 
 # poisson_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=8, width=0, scale=1.1, linear_fit=False)[0]
