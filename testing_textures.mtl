@@ -1,0 +1,12 @@
+# Created by Open3D 
+# object name: testing_textures
+newmtl testing_textures_0
+Ka 1.000 1.000 1.000
+Kd 1.000 1.000 1.000
+Ks 0.000 0.000 0.000
+map_Kd testing_textures_0.png
+newmtl testing_textures_1
+Ka 1.000 1.000 1.000
+Kd 1.000 1.000 1.000
+Ks 0.000 0.000 0.000
+map_Kd testing_textures_1.png
