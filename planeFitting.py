@@ -49,12 +49,13 @@ class SceneFitter:
       print("Error in segmentation!")
       return
     points = np.asarray(self.pointCloud.points)
+    colors = np.asarray(self.pointCloud.colors)
     #  Start getting objects
     for label in np.unique(labels):
       object = o3d.geometry.PointCloud()
-      object.points = o3d.utility.Vector3dVector(points[labels == label, :3])
-      object.colors = o3d.utility.Vector3dVector(points[labels == label, 0:3] / 255)
-      object.normals = o3d.utility.Vector3dVector(points[labels == label, 0:3])
+      object.points = o3d.utility.Vector3dVector(points[labels == label])
+      object.colors = o3d.utility.Vector3dVector(colors[labels == label])
+      object.normals = o3d.utility.Vector3dVector(points[labels == label])
       self.objects.append(object)
 
     print("objects count : {objects}".format(objects=len(np.unique(labels))))
@@ -77,7 +78,7 @@ class SceneFitter:
         inlier_cloud = object.select_by_index(inliers)
         if (len(np.asarray(inlier_cloud.points)) > 30):
           rand_colors = np.abs(np.random.randn(3, 1))
-          inlier_cloud.paint_uniform_color(rand_colors)
+          #inlier_cloud.paint_uniform_color(rand_colors)
           # Append plane to planes list of the building
           building.planes.append(Plane(inlier_cloud, plane_model))
           hasPlanes = True
@@ -142,7 +143,7 @@ class SceneFitter:
     centers_of_mass = np.asarray(centers_of_mass)
 
     pc_centers_of_mass.points = o3d.utility.Vector3dVector(centers_of_mass[:, :3])
-    pc_centers_of_mass.colors = o3d.utility.Vector3dVector(centers_of_mass[:, 0:3] / 255)
+    pc_centers_of_mass.colors = o3d.utility.Vector3dVector(centers_of_mass[:, 0:3] )#/ 255
     pc_centers_of_mass.normals = o3d.utility.Vector3dVector(centers_of_mass[:, 0:3])
 
     return pc_centers_of_mass
@@ -212,10 +213,10 @@ class Building:
         building_uv_idx.append(item)
 
       building_materials.append(
-        # o3d.geometry.Image(plane.texture)
-        o3d.geometry.Image(
-          cv2.cvtColor(cv2.imread(materials[idx]), cv2.COLOR_BGR2RGB)
-          )
+        o3d.geometry.Image(plane.texture)
+        #o3d.geometry.Image(
+         # cv2.cvtColor(cv2.imread(materials[idx]), cv2.COLOR_BGR2RGB)
+          #)
       )
       for triangle in planes_triangles:
         building_triangles.append(triangle)
@@ -427,7 +428,7 @@ class Plane:
     points = np.asarray(self.inter_points)
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
-    pcd.colors = o3d.utility.Vector3dVector(points / 255)
+    pcd.colors = o3d.utility.Vector3dVector(points )#/255
     pcd.normals = o3d.utility.Vector3dVector(points)
     return pcd
 
@@ -454,7 +455,7 @@ class Plane:
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(np.asarray([self.inter_points[0],self.inter_points[0]]))
-    pcd.colors = o3d.utility.Vector3dVector(np.asarray([self.inter_points[0],self.inter_points[0]]) / 255)
+    pcd.colors = o3d.utility.Vector3dVector(np.asarray([self.inter_points[0],self.inter_points[0]]) )#/ 255
     pcd.normals = o3d.utility.Vector3dVector(np.asarray([vectorA, vectorB]))
 
     S = np.asarray([
@@ -577,19 +578,20 @@ class Line:
     self.points = list()
 
 
-input_path="C:/Technion/semester6/project/pythonProjects/"
-output_path="C:/Technion/semester6/project/pythonProjects/outputs"
+input_path="./"
+output_path="outputs"
 # ["arc_result.ply"]
 datanameply=["block_result.ply","buildings.obj","buildings2.obj","arc_result.ply","block.off"]
 
 mesh = o3d.io.read_triangle_mesh(input_path+datanameply[0])
 point_cloud_sampled = mesh.sample_points_poisson_disk(5000)
 
-# point_cloud = np.loadtxt(input_path + datanameply[2],skiprows=10,max_rows=23000)
-# point_cloud_sampled = o3d.geometry.PointCloud()
-# point_cloud_sampled.points = o3d.utility.Vector3dVector(point_cloud)
-# point_cloud_sampled.colors = o3d.utility.Vector3dVector(point_cloud/255)
-# point_cloud_sampled.normals = o3d.utility.Vector3dVector(point_cloud)
+
+point_cloud = np.loadtxt('./sampled_points.txt')
+point_cloud_sampled = o3d.geometry.PointCloud()
+point_cloud_sampled.points = o3d.utility.Vector3dVector(point_cloud[:,0:3])
+point_cloud_sampled.colors = o3d.utility.Vector3dVector(point_cloud[:,3:6] ) ##/255
+point_cloud_sampled.normals = o3d.utility.Vector3dVector(point_cloud[:,0:3])
 o3d.visualization.draw_geometries([point_cloud_sampled])
 
 
