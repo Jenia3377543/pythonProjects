@@ -9,8 +9,9 @@ class TextureGenerator:
         height, width = 40, 40
         avg_color = np.mean(self.points, axis=0)
         image = np.zeros((height,width,3), np.uint8)
+        noise = np.random.normal(255. / 2, 255. / 10, (height,width,3))
 
         color = tuple(reversed(avg_color))
-        image[:] = color
+        image[:] = color+noise
 
         return image

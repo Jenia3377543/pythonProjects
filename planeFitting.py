@@ -2,8 +2,9 @@ import open3d as o3d
 import numpy as np
 import itertools
 import cv2
+import TextureGenerator as tg
 
-texture = cv2.imread('./cube_uv.png')
+text = cv2.imread('./cube_uv.png')
 
 class SceneFitter:
   eps = 6
@@ -21,14 +22,16 @@ class SceneFitter:
   def get_building_triangle_mesh(self):
     meshes = []
     for building in self.buildings:
-      vert, faces = building.get_building_triangles()
+      vert, faces, building_uv_maps, building_uv_idx, materials = building.get_building_triangles()
       temp_mesh = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(vert),
                                 o3d.utility.Vector3iVector(faces))
-      v_uv = np.random.rand(len(faces) * 3, 2)
+
+
       temp_mesh.compute_vertex_normals()
-      temp_mesh.triangle_uvs = o3d.utility.Vector2dVector(v_uv)
-      temp_mesh.textures = [o3d.geometry.Image(texture)]
-      temp_mesh.triangle_material_ids = o3d.utility.IntVector([0] * len(faces))
+      temp_mesh.triangle_uvs = building_uv_maps
+      temp_mesh.textures = materials
+
+      temp_mesh.triangle_material_ids = building_uv_idx
 
       meshes.append(temp_mesh)
 
@@ -179,18 +182,48 @@ class Building:
     all_intersections = np.asarray(all_intersections)
 
     # all_intersections = np.unique(np.concatenate(all_intersections,axis=0),axis=1)
-    all_intersections = np.unique(all_intersections,axis=1)
+    # all_intersections = np.unique(all_intersections,axis=1)
 
     print(f'all intersections: {all_intersections}')
+
     building_triangles = []
-    for plane in self.planes:
+    building_materials = []
+    building_uv_maps = []
+    building_uv_idx = []
+
+    materials = [
+      "./textures/wall.jpg",
+      "./textures/roof.jpg",
+      "./textures/roof.jpg",
+      "./textures/wall.jpg", # wall
+      "./textures/wall.jpg", # wall
+      "./textures/wall.jpg", # 5 corners wall
+      "./textures/wall.jpg" # 5 corners wall
+    ]
+    for idx, plane in enumerate(self.planes):
       # if (len(plane.inter_points) > 4):
       #   continue
-      for triangle in plane.get_plane_triangles(self.center_of_mass):
+      planes_triangles, uv_map = plane.get_plane_triangles(self.center_of_mass)
+
+      for item in uv_map:
+        building_uv_maps.append(item)
+
+      for item in [idx] * len(planes_triangles):
+        building_uv_idx.append(item)
+
+      building_materials.append(
+        # o3d.geometry.Image(plane.texture)
+        o3d.geometry.Image(
+          cv2.cvtColor(cv2.imread(materials[idx]), cv2.COLOR_BGR2RGB)
+          )
+      )
+      for triangle in planes_triangles:
         building_triangles.append(triangle)
 
-
-    return all_intersections, np.asarray([[np.where(np.all(np.abs(np.subtract(all_intersections,point))<1, axis=1))[0][0] for point in triangle] for triangle in building_triangles])
+    print(f"building_uv_maps: {building_uv_maps}")
+    building_uv_maps = o3d.utility.Vector2dVector(np.asarray(building_uv_maps))
+    building_uv_idx = o3d.utility.IntVector(np.asarray(building_uv_idx))
+    return all_intersections, np.asarray([[np.where(np.all(np.abs(np.subtract(all_intersections,point))<1, axis=1))[0][0] for point in triangle] for triangle in building_triangles]), building_uv_maps, building_uv_idx, building_materials
     # return all_intersections, np.asarray(faces)
 
 
@@ -327,7 +360,8 @@ class Building:
     return np.sum(line_sets)
 
 class Plane:
-  def __init__(self, points, normal):
+  def __init__(self, points, normal, texture=text):
+    txtG = tg.TextureGenerator(points)
     self.points = points
     self.center_of_mass = []
     self.inter_points = list()
@@ -335,6 +369,7 @@ class Plane:
     self.mesh = None
     self.distances = points.compute_nearest_neighbor_distance()
     self.avg_dist = np.mean(self.distances)
+    self.texture = txtG.solid_texture()
 
   def get_plane_triangles(self, object_center_of_mass):
     points = np.asarray(self.inter_points)
@@ -367,7 +402,26 @@ class Plane:
                              ordered_points[start_idx + 1]])
       start_idx = start_idx + 1
 
-    return np.asarray(triangles_list)
+    temp_uv_map = [
+      [
+      [0, 1],
+      [0, 0],
+      [1, 0]
+    ],
+      [
+      [0, 1],
+      [1, 0],
+      [1, 1]
+     ]
+    ]
+
+
+    uv_map = []
+    for idx in range(len(triangles_list)):
+      for point in temp_uv_map[idx%2]:
+        uv_map.append(point)
+
+    return np.asarray(triangles_list), np.asarray(uv_map)
 
   def get_inter_points_as_pcd(self):
     points = np.asarray(self.inter_points)
@@ -526,10 +580,18 @@ class Line:
 input_path="C:/Technion/semester6/project/pythonProjects/"
 output_path="C:/Technion/semester6/project/pythonProjects/outputs"
 # ["arc_result.ply"]
-datanameply=["block_result.ply","arc_result.ply"]
+datanameply=["block_result.ply","buildings.obj","buildings2.obj","arc_result.ply","block.off"]
 
 mesh = o3d.io.read_triangle_mesh(input_path+datanameply[0])
 point_cloud_sampled = mesh.sample_points_poisson_disk(5000)
+
+# point_cloud = np.loadtxt(input_path + datanameply[2],skiprows=10,max_rows=23000)
+# point_cloud_sampled = o3d.geometry.PointCloud()
+# point_cloud_sampled.points = o3d.utility.Vector3dVector(point_cloud)
+# point_cloud_sampled.colors = o3d.utility.Vector3dVector(point_cloud/255)
+# point_cloud_sampled.normals = o3d.utility.Vector3dVector(point_cloud)
+o3d.visualization.draw_geometries([point_cloud_sampled])
+
 
 # 'DublinCity' buildings:
 # input_path="./buildings_files/"
@@ -557,5 +619,5 @@ o3d.visualization.draw_geometries([pcd])
 o3d.visualization.draw_geometries([sceneFitter.get_building_triangle_mesh()])
 # o3d.visualization.draw_geometries([np.sum(np.asarray(sceneFitter.meshes_with_planes_scene()))])
 
-# o3d.io.write_triangle_mesh("./initial_mesh.obj", sceneFitter.get_building_triangle_mesh(), write_triangle_uvs=True)
+# o3d.io.write_triangle_mesh("./solid_textures.obj", sceneFitter.get_building_triangle_mesh(), write_triangle_uvs=True)
 
