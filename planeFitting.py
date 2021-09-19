@@ -3,6 +3,7 @@ import numpy as np
 import itertools
 import cv2
 import TextureGenerator as tg
+import PlaneClassifier as classifier
 
 text = cv2.imread('./cube_uv.png')
 
@@ -191,15 +192,16 @@ class Building:
     building_uv_maps = []
     building_uv_idx = []
 
+
     materials = [
-      "./textures/wall.jpg",
-      "./textures/roof.jpg",
-      "./textures/roof.jpg",
-      "./textures/wall.jpg", # wall
-      "./textures/wall.jpg", # wall
-      "./textures/wall.jpg", # 5 corners wall
-      "./textures/wall.jpg" # 5 corners wall
+      ("./textures/wall_tail1.png",(2.4,1.5)),
+      ("./textures/wall_tail1.png",(2.4,1.5)),
+      ("./textures/roof_tile2.png",(0.5,0.8)),
     ]
+
+
+    materials = [tg.TextureTail(cv2.cvtColor(cv2.imread(materials[idx][0]), cv2.COLOR_BGR2RGB),materials[idx][1]) for idx in range(len(materials))]
+
     for idx, plane in enumerate(self.planes):
       # if (len(plane.inter_points) > 4):
       #   continue
@@ -211,11 +213,18 @@ class Building:
       for item in [idx] * len(planes_triangles):
         building_uv_idx.append(item)
 
+
       building_materials.append(
         # o3d.geometry.Image(plane.texture)
-        o3d.geometry.Image(
-          cv2.cvtColor(cv2.imread(materials[idx]), cv2.COLOR_BGR2RGB)
-          )
+
+        o3d.geometry.Image(tg.tailed_texture(np.asarray(plane.inter_points),
+          materials[classifier.classifyPlane(plane.normal[0:3])]
+          # cv2.cvtColor(cv2.imread(materials[idx]), cv2.COLOR_BGR2RGB)
+        ))
+        # if idx in [1,2] else
+        # o3d.geometry.Image(
+        #   cv2.cvtColor(cv2.imread(materials[idx]), cv2.COLOR_BGR2RGB)
+        # )
       )
       for triangle in planes_triangles:
         building_triangles.append(triangle)
