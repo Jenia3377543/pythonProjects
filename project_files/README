@@ -1,0 +1,7 @@
+Instruction for project setup:
+
+1) Install Anaconda Navigator (https://docs.anaconda.com/anaconda/install/) if you doesn't have one installed.
+2) Create environment variable with setup.yml using following command:
+    conda create env -f setup.yml
+3) Now, you can use '3DCityImaging' environment variable in any IDE, or you can activate it using:
+    conda activate 3DCityImaging

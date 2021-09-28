@@ -105,23 +105,26 @@ datanameply=["block_result.ply","buildings.obj","buildings2.obj","arc_result.ply
 
 mesh = o3d.io.read_triangle_mesh(input_path+datanameply[0])
 pcd = mesh.sample_points_poisson_disk(8000)
+pcd.colors = o3d.utility.Vector3dVector(np.asarray(pcd.points)/255)
+pcd.normals = o3d.utility.Vector3dVector(np.asarray(pcd.points))
 coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=5.0, origin=pcd.get_center())
 
 # pick_points(point_cloud_sampled)
 # colors = np.multiply(np.ones(np.asarray(point_cloud_sampled.points).shape),255)
 
-objects = segmentObjects(pcd)
-all_objects_planes = fitPlanesForObjects(objects)
-new_objects_with_color = []
-for idx, objects_planes in enumerate(all_objects_planes):
-    print(f"building #{idx}")
-    new_object = []
-    for plane_pcd, plane_model in objects_planes:
-        print(f"current plane model: {plane_model}")
-        new_object.append(pick_points(plane_pcd, coordinate_frame))
-    new_objects_with_color.append(np.sum(np.asarray(new_object),axis=0))
-all_new_pcd = np.sum(np.asarray(new_objects_with_color),axis=0)
-o3d.visualization.draw_geometries([all_new_pcd])
-
-np.savetxt('sampled_pcd2',np.concatenate((all_new_pcd.points,all_new_pcd.colors),axis=1), fmt='%.5f')
+# objects = segmentObjects(pcd)
+# all_objects_planes = fitPlanesForObjects(objects)
+# new_objects_with_color = []
+# for idx, objects_planes in enumerate(all_objects_planes):
+#     print(f"building #{idx}")
+#     new_object = []
+#     for plane_pcd, plane_model in objects_planes:
+#         print(f"current plane model: {plane_model}")
+#         new_object.append(pick_points(plane_pcd, coordinate_frame))
+#     new_objects_with_color.append(np.sum(np.asarray(new_object),axis=0))
+# all_new_pcd = np.sum(np.asarray(new_objects_with_color),axis=0)
+# o3d.visualization.draw_geometries([all_new_pcd])
+#
+# np.savetxt('sampled_pcd2',np.concatenate((all_new_pcd.points,all_new_pcd.colors),axis=1), fmt='%.5f')
+np.savetxt('sampled_pcd2',np.concatenate((pcd.points,pcd.colors),axis=1), fmt='%.5f')
 

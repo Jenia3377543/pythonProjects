@@ -5,11 +5,15 @@ import cv2
 import TextureGenerator as tg
 import PlaneClassifier as classifier
 
+from sklearn.neighbors import NearestNeighbors
+from matplotlib import pyplot as plt
+from kneed import KneeLocator
+
 text = cv2.imread('./cube_uv.png')
 
 class SceneFitter:
   eps = 6
-  min_point_for_plane = 50
+  min_point_for_plane = 30
   distance_threshold = 0.1
 
   def __init__(self, pointCloud):
@@ -41,8 +45,38 @@ class SceneFitter:
    Suppose for now that only building can be in point cloud (there no: cars, and so on)
   '''
   def segmentObjects(self):
-    labels = np.asarray(self.pointCloud.cluster_dbscan(eps=self.eps * self.min_distance,
+    # counts, bins = np.histogram(self.distances)
+    # plt.hist(bins[:-1], bins, weights=counts)
+    # plt.ylabel("Points count")
+    # plt.xlabel("Nearest distance")
+    # plt.show()
+
+    minPts = 6
+    neighbors = NearestNeighbors(n_neighbors=minPts)
+    neighbors_fit = neighbors.fit(self.pointCloud.points)
+    distances, indices = neighbors_fit.kneighbors(self.pointCloud.points)
+    distances = np.sort(distances, axis=0)
+    distances = distances[:, 1]
+
+    kn = KneeLocator(range(len(distances)), distances, curve='convex', direction='increasing')
+
+    plt.plot(distances, label=r"$\bar{\epsilon}$ - distance to nearest 6 point")
+    plt.plot(kn.knee,distances[kn.knee], "ro")
+    plt.legend()
+
+    plt.title(r"Optimal $\bar{\epsilon}$ values")
+    plt.ylabel(r"$\bar{\epsilon}$")
+    plt.xlabel("Points index")
+    plt.show()
+
+    self.min_distance = 3*distances[kn.knee]
+    self.min_point_for_plane = 3*minPts
+    labels = np.asarray(self.pointCloud.cluster_dbscan(eps=self.min_distance,
                                                        min_points=self.min_point_for_plane))
+
+    print(f"knee={kn.knee}")
+    # labels = np.asarray(self.pointCloud.cluster_dbscan(eps=3*distances[kn.knee],
+    #                                                    min_points=3*minPts))
     objects_labels = np.unique(labels)
 
     # Check if clustering found some objects, depends on params we choose in clustering step
@@ -56,6 +90,8 @@ class SceneFitter:
       object.points = o3d.utility.Vector3dVector(points[labels == label, :3])
       object.colors = o3d.utility.Vector3dVector(points[labels == label, 0:3] / 255)
       object.normals = o3d.utility.Vector3dVector(points[labels == label, 0:3])
+
+
       self.objects.append(object)
 
     print("objects count : {objects}".format(objects=len(np.unique(labels))))
@@ -68,7 +104,7 @@ class SceneFitter:
 #     Start to fit planes for objects we detected in segmentObject(self) step
     for idx, object in enumerate(self.objects):
       building = Building(object)
-
+      building.threshold_neighbor_planes = self.min_distance
       hasPlanes = False
       while (True):
 
@@ -76,7 +112,7 @@ class SceneFitter:
         plane_model, inliers = object.segment_plane(distance_threshold=self.distance_threshold, ransac_n=4, num_iterations=1000)
         # Select points that belong to the plane
         inlier_cloud = object.select_by_index(inliers)
-        if (len(np.asarray(inlier_cloud.points)) > 30):
+        if (len(np.asarray(inlier_cloud.points)) > self.min_point_for_plane):
           rand_colors = np.abs(np.random.randn(3, 1))
           inlier_cloud.paint_uniform_color(rand_colors)
           # Append plane to planes list of the building
@@ -592,7 +628,7 @@ output_path="C:/Technion/semester6/project/pythonProjects/outputs"
 datanameply=["block_result.ply","buildings.obj","buildings2.obj","arc_result.ply","block.off"]
 
 mesh = o3d.io.read_triangle_mesh(input_path+datanameply[0])
-point_cloud_sampled = mesh.sample_points_poisson_disk(5000)
+point_cloud_sampled = mesh.sample_points_poisson_disk(1800)
 
 # point_cloud = np.loadtxt(input_path + datanameply[2],skiprows=10,max_rows=23000)
 # point_cloud_sampled = o3d.geometry.PointCloud()
